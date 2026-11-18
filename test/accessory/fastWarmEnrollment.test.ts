@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import EventEmitter from 'events';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import https from 'https';
 import * as hap from '@homebridge/hap-nodejs';
@@ -13,7 +14,9 @@ jest.mock('../../src/device/lan/FastWarmLanController', () => ({__esModule: true
 class PlatformAccessory extends hap.Accessory {context: Record<string, unknown> = {};}
 
 test('real HAP handlers publish healthy and key-pending ET-63 devices without stopping the healthy provider', async () => {
-  const root = await fs.mkdtemp('/private/tmp/fw-hap-'), persist = path.join(root, 'persist');
+  // Keep Unix socket paths below Darwin's shorter path limit.
+  const temporary = process.platform === 'darwin' ? '/tmp' : os.tmpdir();
+  const root = await fs.realpath(await fs.mkdtemp(path.join(temporary, 'fw-hap-'))), persist = path.join(root, 'persist');
   const instanceId = '0123456789abcdef';
   await fs.mkdir(persist, {mode: 0o700});
   await new FastWarmLanKeyStore(persist, instanceId).set('healthy', 'abcdefghijklmnop');

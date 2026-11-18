@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import TuyaDevice from '../../src/device/TuyaDevice';
 import {readFastWarmLanMetadata, saveFastWarmLanMetadata} from '../../src/device/lan/FastWarmLanBootstrap';
@@ -19,7 +20,9 @@ const device = (id = 'fixture-room', product_id = 'lmtejj3f4kafi2k1') => new Tuy
 });
 
 async function fixture() {
-  const root = await fs.mkdtemp('/private/tmp/fw-bootstrap-'); roots.push(root);
+  // Keep Unix socket paths below Darwin's shorter path limit.
+  const temporary = process.platform === 'darwin' ? '/tmp' : os.tmpdir();
+  const root = await fs.realpath(await fs.mkdtemp(path.join(temporary, 'fw-bootstrap-'))); roots.push(root);
   const persist = path.join(root, 'persist'), file = path.join(persist, `FastWarmLocalMetadata.${INSTANCE}.json`);
   return {root, persist, file};
 }

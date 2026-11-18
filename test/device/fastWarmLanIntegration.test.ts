@@ -2,6 +2,7 @@
 import {createHash} from 'crypto';
 import EventEmitter from 'events';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import TuyaDevice from '../../src/device/TuyaDevice';
 import TuyaDeviceManager from '../../src/device/TuyaDeviceManager';
@@ -27,7 +28,9 @@ async function fixture(options: {ignoreTarget?: boolean; unknownProgramme?: bool
   notSent?: boolean; staleWeek?: boolean; partialWeek?: boolean;} = {}) {
   let now = Date.parse('2026-11-17T19:00:00Z');
   jest.spyOn(Date, 'now').mockImplementation(() => now);
-  const root = await fs.mkdtemp('/private/tmp/fw-lan-integration-'), persist = path.join(root, 'persist');
+  // Keep Unix socket paths below Darwin's shorter path limit.
+  const temporary = process.platform === 'darwin' ? '/tmp' : os.tmpdir();
+  const root = await fs.realpath(await fs.mkdtemp(path.join(temporary, 'fw-lan-integration-'))), persist = path.join(root, 'persist');
   await fs.mkdir(persist, {mode: 0o700});
   const device = {id: 'local-room', name: 'Thermostat', room_name: 'Fixture Room', online: false,
     product_id: 'lmtejj3f4kafi2k1', status: [{code: 'temp_unit_convert', value: 'f'},

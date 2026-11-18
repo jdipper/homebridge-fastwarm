@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import EventEmitter from 'events';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import https from 'https';
 import {request} from 'http';
@@ -35,7 +36,10 @@ function existing(): TuyaDevice {
 }
 
 async function fixture(options: {cache?: boolean; malformed?: boolean; missingKey?: boolean; waitForLAN?: Promise<void>} = {}) {
-  const root = await fs.mkdtemp('/private/tmp/fwp-'), persist = path.join(root, 'persist'); await fs.mkdir(persist, {mode: 0o700});
+  // Keep Unix socket paths below Darwin's shorter path limit.
+  const temporary = process.platform === 'darwin' ? '/tmp' : os.tmpdir();
+  const root = await fs.realpath(await fs.mkdtemp(path.join(temporary, 'fwp-'))), persist = path.join(root, 'persist');
+  await fs.mkdir(persist, {mode: 0o700});
   const metadata = path.join(persist, `FastWarmLocalMetadata.${INSTANCE}.json`);
   const keyFile = path.join(persist, `FastWarmLocalKeys.${INSTANCE}.json`);
   if (options.cache !== false) {

@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import TuyaDevice, {TuyaDeviceSchemaMode as Mode, TuyaDeviceSchemaType as Type} from '../src/device/TuyaDevice';
 import {deviceMetadata} from '../src/deviceMetadata';
@@ -16,7 +17,9 @@ function cached(deviceId = 'selected'): TuyaDevice {
     status: [{code: 'switch', value: true}, {code: 'temp_set', value: 180}, {code: 'temp_unit_convert', value: 'c'}]});
 }
 async function fixture(devices?: TuyaDevice[]) {
-  const root = await fs.mkdtemp('/private/tmp/fw-inventory-'); roots.push(root);
+  // Keep Unix socket paths below Darwin's shorter path limit.
+  const temporary = process.platform === 'darwin' ? '/tmp' : os.tmpdir();
+  const root = await fs.realpath(await fs.mkdtemp(path.join(temporary, 'fw-inventory-'))); roots.push(root);
   const persist = path.join(root, 'persist'), file = path.join(persist, `FastWarmLocalMetadata.${INSTANCE}.json`);
   if (devices) {
     await saveFastWarmLanMetadata(persist, INSTANCE, devices);

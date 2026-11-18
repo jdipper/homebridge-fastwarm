@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import TuyaOpenAPI from '../../src/cloud/SmartLifeAPI';
 import TuyaOpenMQ from '../../src/core/TuyaOpenMQ';
@@ -29,7 +30,9 @@ const specification = () => ({status: standard.map(({code, type, property}) => (
   functions: standard.map(({code, type, property}) => ({code, type, values: JSON.stringify(property)}))});
 
 async function fixture() {
-  const root = await fs.mkdtemp('/private/tmp/fw-explicit-refresh-'); roots.push(root);
+  // Keep Unix socket paths below Darwin's shorter path limit.
+  const temporary = process.platform === 'darwin' ? '/tmp' : os.tmpdir();
+  const root = await fs.realpath(await fs.mkdtemp(path.join(temporary, 'fw-explicit-refresh-'))); roots.push(root);
   const persist = path.join(root, 'persist'), file = path.join(persist, `FastWarmLocalMetadata.${INSTANCE}.json`);
   await saveFastWarmLanMetadata(persist, INSTANCE, [device('selected'), device('untouched')]);
   const before = await fs.readFile(file), previous = await readFastWarmLanMetadata(persist, INSTANCE);
