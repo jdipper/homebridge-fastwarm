@@ -1,0 +1,149 @@
+{
+  "pluginAlias": "FastWarmPlatform",
+  "pluginType": "platform",
+  "singular": true,
+  "customUi": true,
+  "headerDisplay": "Local FastWarm WiFi 2.0 / ET-63 thermostats. Programme profiles and household controls remain in Heating Programmes.",
+  "schema": {
+    "type": "object",
+    "required": [
+      "instanceId",
+      "devices"
+    ],
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "FastWarm"
+      },
+      "instanceId": {
+        "title": "Stable instance ID",
+        "type": "string",
+        "pattern": "^[a-f0-9]{16}$",
+        "description": "Generated when you open settings. Keep this value unchanged: it identifies private keys, metadata and saved programmes. A migration retains the original provider ID."
+      },
+      "devices": {
+        "title": "Thermostats",
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 64,
+        "items": {
+          "type": "object",
+          "required": [
+            "deviceId",
+            "address",
+            "version"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "deviceId": {
+              "title": "Device ID",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            },
+            "address": {
+              "title": "Local IPv4 address",
+              "type": "string",
+              "placeholder": "192.168.1.50"
+            },
+            "version": {
+              "title": "Protocol",
+              "type": "string",
+              "enum": [
+                "3.5"
+              ],
+              "default": "3.5"
+            },
+            "enabled": {
+              "title": "Enabled",
+              "type": "boolean",
+              "default": true
+            },
+            "model": {
+              "title": "Model",
+              "type": "string",
+              "enum": [
+                "ET-63"
+              ],
+              "default": "ET-63"
+            },
+            "name": {
+              "title": "Name (optional override)",
+              "type": "string"
+            },
+            "roomName": {
+              "title": "Room (optional override)",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "smartLife": {
+        "title": "Optional SmartLife metadata import",
+        "type": "object",
+        "description": "Used only by the explicit metadata-import button. Local startup, controls and schedules need no cloud account.",
+        "properties": {
+          "projectType": {
+            "type": "string",
+            "enum": [
+              "2"
+            ],
+            "default": "2",
+            "title": "Project type"
+          },
+          "endpoint": {
+            "title": "Tuya endpoint",
+            "type": "string",
+            "placeholder": "https://openapi.tuyaeu.com"
+          },
+          "accessId": {
+            "title": "Project Access ID",
+            "type": "string"
+          },
+          "accessKey": {
+            "title": "Project Access Secret",
+            "type": "string",
+            "format": "password"
+          },
+          "countryCode": {
+            "type": "integer",
+            "minimum": 1,
+            "title": "Country code"
+          },
+          "username": {
+            "title": "SmartLife username",
+            "type": "string"
+          },
+          "password": {
+            "title": "SmartLife password",
+            "type": "string",
+            "format": "password"
+          },
+          "appSchema": {
+            "title": "App schema",
+            "type": "string",
+            "default": "smartlife"
+          },
+          "homeWhitelist": {
+            "type": "array",
+            "title": "Home IDs (optional)",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "forceIPv4": {
+            "type": "boolean",
+            "default": false,
+            "title": "Use IPv4 for optional import"
+          }
+        }
+      },
+      "debug": {
+        "title": "Debug logging",
+        "type": "boolean",
+        "default": false
+      }
+    }
+  }
+}

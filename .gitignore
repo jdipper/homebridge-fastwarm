@@ -1,0 +1,12 @@
+node_modules
+dist/
+coverage/
+*.tgz
+.env*
+config.json
+persist/
+accessories/
+heating-runtime/
+heating-operations/
+*.log
+.DS_Store

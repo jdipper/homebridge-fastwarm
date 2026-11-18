@@ -1,0 +1,273 @@
+import { TuyaDeviceSchemaEnumProperty, TuyaDeviceSchemaIntegerProperty, TuyaDeviceStatus } from '../device/TuyaDevice';
+import { limit, toHapProperty } from '../util/util';
+import BaseAccessory from './BaseAccessory';
+import { configureCurrentTemperature } from './characteristic/CurrentTemperature';
+import { configureTempDisplayUnits } from './characteristic/TemperatureDisplayUnits';
+import { FASTWARM_CURRENT_TEMPERATURE_SCHEMA, isFastWarmThermostat } from '../device/profile/FastWarmThermostat';
+
+const SCHEMA_CODE = {
+  ON: ['switch'],
+  CURRENT_MODE: ['work_state', 'mode'],
+  TARGET_MODE: ['mode'],
+  CURRENT_TEMP: ['temp_current', 'temp_set'],
+  TARGET_TEMP: ['temp_set'],
+  TEMP_UNIT_CONVERT: ['temp_unit_convert', 'c_f'],
+};
+
+export default class ThermostatAccessory extends BaseAccessory {
+
+  requiredSchema() {
+    if (isFastWarmThermostat(this.device)) {
+      return [SCHEMA_CODE.TARGET_TEMP];
+    }
+    return [SCHEMA_CODE.CURRENT_TEMP, SCHEMA_CODE.TARGET_TEMP];
+  }
+
+  configureServices() {
+    this.configureCurrentState();
+    this.configureTargetState();
+    if (isFastWarmThermostat(this.device)) {
+      this.configureFastWarmCurrentTemperature();
+    } else {
+      configureCurrentTemperature(this, this.mainService(), this.getSchema(...SCHEMA_CODE.CURRENT_TEMP));
+    }
+    this.configureTargetTemp();
+    configureTempDisplayUnits(this, this.mainService(), this.getSchema(...SCHEMA_CODE.TEMP_UNIT_CONVERT));
+  }
+
+  private configureFastWarmCurrentTemperature() {
+    const schema = this.getSchema('temp_current') ?? FASTWARM_CURRENT_TEMPERATURE_SCHEMA;
+    const property = schema.property as TuyaDeviceSchemaIntegerProperty;
+    this.mainService().getCharacteristic(this.Characteristic.CurrentTemperature)
+      .onGet(async () => {
+        this.checkOnlineStatus();
+        // The raw temperature's Fahrenheit representation has not been verified for this product.
+        if (this.getStatus('temp_unit_convert')?.value.toString().toLowerCase() !== 'c') {
+          const { HapStatusError, HAPStatus } = this.platform.api.hap;
+          throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
+        // The single LAN owner maintains this cache; HomeKit reads never start a second poller.
+        void this.deviceManager.refreshSupplementalTemperature(this.device);
+        const status = this.getStatus('temp_current');
+        if (!status || typeof status.value !== 'number' || !Number.isFinite(status.value)
+          || !this.deviceManager.isTemperatureAvailable(this.device.id)) {
+          const { HapStatusError, HAPStatus } = this.platform.api.hap;
+          throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
+        return status.value / Math.pow(10, property.scale);
+      })
+      .setProps(toHapProperty(property));
+  }
+
+
+  mainService() {
+    return this.accessory.getService(this.Service.Thermostat)
+      || this.accessory.addService(this.Service.Thermostat);
+  }
+
+  configureCurrentState() {
+
+    const { OFF, HEAT, COOL } = this.Characteristic.CurrentHeatingCoolingState;
+    this.mainService().getCharacteristic(this.Characteristic.CurrentHeatingCoolingState)
+      .onGet(() => {
+        this.checkOnlineStatus();
+        const on = this.getStatus('switch');
+        if (on && on.value === false) {
+          return OFF;
+        }
+
+        if (isFastWarmThermostat(this.device)) {
+          if (this.getStatus('temp_unit_convert')?.value.toString().toLowerCase() !== 'c') {
+            return OFF;
+          }
+          const current = this.getStatus('temp_current');
+          const target = this.getStatus('temp_set');
+          if (!current || !target || typeof current.value !== 'number' || typeof target.value !== 'number') {
+            return OFF;
+          }
+          const currentProperty = (this.getSchema('temp_current') ?? FASTWARM_CURRENT_TEMPERATURE_SCHEMA)
+            .property as TuyaDeviceSchemaIntegerProperty;
+          const targetProperty = this.getSchema('temp_set')!.property as TuyaDeviceSchemaIntegerProperty;
+          return target.value / Math.pow(10, targetProperty.scale) > current.value / Math.pow(10, currentProperty.scale) ? HEAT : OFF;
+        }
+
+        const schema = this.getSchema(...SCHEMA_CODE.CURRENT_MODE);
+        if (!schema) {
+          // If don't support mode, compare current and target temp.
+          const currentSchema = this.getSchema(...SCHEMA_CODE.CURRENT_TEMP);
+          const targetSchema = this.getSchema(...SCHEMA_CODE.TARGET_TEMP);
+          if (!currentSchema || !targetSchema) {
+            return OFF;
+          }
+          const current = this.getStatus(currentSchema.code)!;
+          const target = this.getStatus(targetSchema.code)!;
+          if (target.value > current.value) {
+            return HEAT;
+          } else if (target.value < current.value) {
+            return COOL;
+          } else {
+            return OFF;
+          }
+        }
+
+        const status = this.getStatus(schema.code)!;
+        if (status.value === 'hot' || status.value === 'opened' || status.value === 'heating') {
+          return HEAT;
+        } else if (
+          status.value === 'cold' ||
+          status.value === 'eco' ||
+          status.value === 'idle' ||
+          status.value === 'window_opened'
+        ) {
+          return COOL;
+        }
+        // Don't know how to display unsupported work mode.
+        return OFF;
+      });
+
+  }
+
+  configureTargetState() {
+    const { OFF, HEAT, COOL, AUTO } = this.Characteristic.TargetHeatingCoolingState;
+    const validValues = [AUTO];
+
+    // Thermostat valve may not support 'Power Off'
+    const powerSchema = this.getSchema(...SCHEMA_CODE.ON);
+    if (powerSchema) {
+      validValues.push(OFF);
+    }
+
+    const schema = this.getSchema(...SCHEMA_CODE.TARGET_MODE);
+    const property = schema?.property as TuyaDeviceSchemaEnumProperty;
+    if (property) {
+      if (property.range.includes('hot')) {
+        validValues.push(HEAT);
+      }
+      if (property.range.includes('cold') || property.range.includes('eco')) {
+        validValues.push(COOL);
+      }
+    }
+
+    this.mainService().getCharacteristic(this.Characteristic.TargetHeatingCoolingState)
+      .onGet(() => {
+        this.checkOnlineStatus();
+        const on = this.getStatus('switch');
+        if (powerSchema && typeof on?.value !== 'boolean') {
+          const { HapStatusError, HAPStatus } = this.platform.api.hap;
+          throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
+        if (on && on.value === false) {
+          return OFF;
+        }
+
+        if (!schema) {
+          // If don't support mode, display auto.
+          return AUTO;
+        }
+
+        const status = this.getStatus(schema.code)!;
+        if (status.value === 'hot') {
+          return HEAT;
+        } else if (status.value === 'cold' || status.value === 'eco') {
+          return COOL;
+        } else if (status.value === 'auto' || status.value === 'temp_auto') {
+          return AUTO;
+        }
+
+        // Don't know how to display unsupported mode.
+        return AUTO;
+      })
+      .onSet(async value => {
+        this.checkOnlineStatus();
+        const commands: TuyaDeviceStatus[] = [];
+
+        // Thermostat valve may not support 'Power Off'
+        const on = this.getStatus('switch');
+        if (powerSchema && typeof on?.value !== 'boolean') {
+          const { HapStatusError, HAPStatus } = this.platform.api.hap;
+          throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
+        if (on) {
+          if (value === OFF) {
+            commands.push({
+              code: 'switch',
+              value: false,
+            });
+          } else if (on.value === false) {
+            commands.push({
+              code: 'switch',
+              value: true,
+            });
+          }
+        }
+
+        if (schema) {
+          if ((value === HEAT) && property.range.includes('hot')) {
+            commands.push({ code: schema.code, value: 'hot' });
+          } else if (value === COOL) {
+            if (property.range.includes('eco')) {
+              commands.push({ code: schema.code, value: 'eco' });
+            } else if (property.range.includes('cold')) {
+              commands.push({ code: schema.code, value: 'cold' });
+            }
+          } else if ((value === AUTO) && property.range.includes('auto')) {
+            commands.push({ code: schema.code, value: 'auto' });
+          }
+        }
+
+        if (commands.length !== 0) {
+          await this.sendCommands(commands);
+        }
+      })
+      .setProps({ validValues });
+
+  }
+
+  // FIXME: For some reason, a limit is being imposed on the target temperature.
+  // Request to those who have the actual product: Please investigate whether ./characteristic/TargetTemperature can be used.
+  configureTargetTemp() {
+    const schema = this.getSchema(...SCHEMA_CODE.TARGET_TEMP);
+    if (!schema) {
+      this.log.warn('TargetTemperature not supported.');
+      return;
+    }
+
+    const property = schema.property as TuyaDeviceSchemaIntegerProperty;
+    let multiple = Math.pow(10, property.scale);
+    let props = {
+      minValue: Math.max(10, property.min / multiple),
+      maxValue: Math.min(38, property.max / multiple),
+      minStep: Math.max(0.1, property.step / multiple),
+    };
+    if (isFastWarmThermostat(this.device) && this.deviceManager.fastWarmLan?.has(this.device.id)) {
+      props.minStep = 0.5;
+    }
+    if (props.maxValue <= props.minValue) {
+      this.log.warn('Invalid schema: %o, props will be reset to the default value.', schema);
+      multiple = 1;
+      props = { minValue: 10, maxValue: 38, minStep: 1 };
+    }
+    this.log.debug('Set props for TargetTemperature:', props);
+
+    this.mainService().getCharacteristic(this.Characteristic.TargetTemperature)
+      .onGet(() => {
+        this.checkOnlineStatus();
+        const status = this.getStatus(schema.code);
+        if (!status || typeof status.value !== 'number' || !Number.isFinite(status.value)) {
+          const { HapStatusError, HAPStatus } = this.platform.api.hap;
+          throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
+        const temp = status.value as number / multiple;
+        return limit(temp, props.minValue, props.maxValue);
+      })
+      .onSet(async value => {
+        await this.sendCommands([{
+          code: schema.code,
+          value: value as number * multiple,
+        }]);
+      })
+      .setProps(props);
+
+  }
+
+}

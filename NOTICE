@@ -1,0 +1,4 @@
+FastWarm Local includes code derived from homebridge-plugins/homebridge-tuya and jdipper/homebridge-tuya.
+Original MIT copyright: 2014-2021 Tuya Inc. See LICENSE.
+Local transport, shared programme safeguards and extraction: jdipper contributors, 2026.
+FastWarm is a third-party product name; this plugin is an independent integration.
