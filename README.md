@@ -58,6 +58,8 @@ Schedule delivery retains the tested transport queue, pacing, cancellation and f
 
 The extracted runtime is covered by offline protocol, schedule, security, UI and migration-contract tests. The prior implementation has live LAN read evidence for six thermostats and a future-period write-and-restore test on one device. Broad local multi-period writes and a deliberate WAN-disconnection test remain separate validation work. Extraction itself does not change a thermostat programme or target.
 
+Release `0.1.0-jdipper.1` has completed a backed-up migration with Heating Programmes `.10`: all 168 stored periods and six fresh current targets matched Home, pairing and grouped controls were preserved, and the provider held six LAN sessions with no public TCP connections or Tuya HTTP attempts during verification. The complete plugin suite passes 538 tests and [Linux CI](https://github.com/jdipper/homebridge-fastwarm/actions/runs/44306032533).
+
 See [architecture](docs/architecture.md), [handover](docs/codex-handover.md) and [release notes](CHANGELOG.md). Keep local keys, account credentials, serial numbers, addresses and Homebridge backups out of public issues and logs.
 
 ## Licence
